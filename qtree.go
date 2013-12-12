@@ -1,7 +1,12 @@
 package main
 
-import "fmt"
-import "math"
+import (
+	"fmt"
+	"math"
+    "log"
+    "github.com/ajstarks/svgo"
+    "net/http"
+)
 
 const (NW=iota; NE; SE; SW)
 const children = SW+1  // This is possibly lame?
@@ -56,6 +61,12 @@ func main() {
 	fmt.Println("traverseTree TotalCalls: ", TotalCalls)
 	fmt.Println("traverseTree TotalLeafNodes: ", TotalLeafNodes)
 	fmt.Println("traverseTree TotalArea: ", TotalArea)
+
+    http.Handle("/qtree", http.HandlerFunc(renderSVG))
+    err := http.ListenAndServe(":2003", nil)
+    if err != nil {
+        log.Fatal("ListenAndServe:", err)
+    }
 }
 
 //  Recursively build totally bushed-out tree.
@@ -90,6 +101,18 @@ func buildTree(geom Geom, level int) *Node {
 	}
 	return tmp
 }
+
+
+func renderSVG(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Content-Type", "image/svg+xml")
+	s := svg.New(w)
+	s.Start(1000, 1000)
+	drawTree(head)
+	s.Grid(0, 0, 1000, 1000, 10, "fill:none;stroke:black")
+	s.Circle(250, 250, 125, "fill:none;stroke:black")
+	s.End()
+}
+
 
 //  Recursively build segment-box intersect tree
 func segBoxTree(seg Segment, geom Geom, level int) *Node {
