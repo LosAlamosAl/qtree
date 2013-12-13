@@ -1,18 +1,22 @@
 package main
 
 import (
+    "log"
+    "github.com/ajstarks/svgo"
+    "net/http"
 	"fmt"
 	"math"
 )
 
 const (NW=iota; NE; SE; SW)
 const children = SW+1  // This is possibly lame?
-const maxDecomp = 4    // Results in maxDecomp+1 levels in tree
+const maxDecomp = 8 // Results in maxDecomp+1 levels in tree (0-level is root pointer)
 
 var  TotalCalls int    // Ack! Global!  Used for stats and debugging.
 var  TotalLeafNodes int
 var  TotalArea float32
 var  head   *Node
+var  segment Segment
 
 // The next three structs look an awful lot alike!
 type Segment struct {
@@ -39,26 +43,56 @@ type Node struct {
 
 
 func main() {
-/*
-	head := buildTree(Geom {0.0, 0.0, 1.0, 1.0}, maxDecomp)
-	fmt.Println("head: ", head)
-	fmt.Println("buildTree TotalCalls: ", TotalCalls)
 	TotalCalls = 0
-	traverseTree(head)
-	fmt.Println("traverseTree TotalCalls: ", TotalCalls)
-	fmt.Println("traverseTree TotalLeafNodes: ", TotalLeafNodes)
-	fmt.Println("traverseTree TotalArea: ", TotalArea)
-*/
-	TotalCalls = 0
-	head = segBoxTree(Segment {0.1, 1.0, 0.9, 0.0}, 
-		Geom {0.0, 0.0, 1.0, 1.0}, maxDecomp)
+	segment =  Segment {0.1, 1.0, 0.6, 0.0}
+	head = segBoxTree(segment, Geom {0.0, 0.0, 1.0, 1.0}, maxDecomp)
 	fmt.Println("segBoxTree TotalCalls: ", TotalCalls)
 	TotalCalls = 0
 	TotalArea  = 0.0
-	traverseTree(head)
+	incrArea := func(geom Geom) { 
+		TotalArea += geom.w * geom.h
+		return
+	}
+	traverseTree(head, incrArea)
 	fmt.Println("traverseTree TotalCalls: ", TotalCalls)
 	fmt.Println("traverseTree TotalLeafNodes: ", TotalLeafNodes)
 	fmt.Println("traverseTree TotalArea: ", TotalArea)
+	initWeb()
+}
+
+
+func initWeb() {
+    http.Handle("/qtree", http.HandlerFunc(renderSVG))
+    err := http.ListenAndServe(":2003", nil)
+    if err != nil {
+        log.Fatal("ListenAndServe:", err)
+    }
+}
+
+
+//  Temporary kludge.
+//  Convert geom (in 0.0 -- 1.0 space) to box (in 0 -- 1000 space)
+func  svgCoord(g Geom) Geom {
+	//fmt.Printf("g: %#v\n", g)
+	svgc := Geom {g.x*1000, 1000-(g.y+g.h)*1000, g.w*1000, g.h*1000}
+	//fmt.Printf("b: %#v\n\n", svgc)
+	return svgc
+}
+
+
+func renderSVG(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Content-Type", "image/svg+xml")
+	s := svg.New(w)
+	s.Start(1000, 1000)
+	drawBox := func(geom Geom) { 
+		c := svgCoord(geom)
+		s.Rect(int(c.x), int(c.y), int(c.w), int(c.h), "fill:none;stroke:grey")
+		return
+	}
+	drawTree(head, drawBox)
+	s.Line(int(segment.x0*1000), 1000-int(segment.y0*1000), int(segment.x1*1000), 
+			1000-int(segment.y1*1000), "fill:none;stroke:red")
+	s.End()
 }
 
 //  Recursively build totally bushed-out tree.
@@ -135,7 +169,7 @@ func segBoxTree(seg Segment, geom Geom, level int) *Node {
 //
 //  Think there is a logic error in leaf node check. May miss
 //  root-level nodes.  Check it out.
-func traverseTree(nodePtr *Node) {
+func traverseTree(nodePtr *Node,  leafFunc func(g Geom)) {
 	TotalCalls++
 	if nodePtr == nil {
 		return
@@ -145,13 +179,13 @@ func traverseTree(nodePtr *Node) {
 		if nodePtr.child[NW] == nil && nodePtr.child[NE] == nil &&
 			nodePtr.child[SE] == nil && nodePtr.child[SW] == nil {
 			TotalLeafNodes++
-			TotalArea += nodePtr.geom.w * nodePtr.geom.h
+			leafFunc(nodePtr.geom)
 		}
 		//  Could just do the slice range here--order not important.
-		traverseTree(nodePtr.child[NW])
-		traverseTree(nodePtr.child[NE])
-		traverseTree(nodePtr.child[SE])
-		traverseTree(nodePtr.child[SW])
+		traverseTree(nodePtr.child[NW], leafFunc)
+		traverseTree(nodePtr.child[NE], leafFunc)
+		traverseTree(nodePtr.child[SE], leafFunc)
+		traverseTree(nodePtr.child[SW], leafFunc)
 	}
 	return
 }
@@ -168,10 +202,10 @@ func drawTree(nodePtr *Node, leafFunc func(g Geom)) {
 			leafFunc(nodePtr.geom)
 		}
 		//  Could just do the slice range here--order not important.
-		traverseTree(nodePtr.child[NW])
-		traverseTree(nodePtr.child[NE])
-		traverseTree(nodePtr.child[SE])
-		traverseTree(nodePtr.child[SW])
+		drawTree(nodePtr.child[NW], leafFunc)
+		drawTree(nodePtr.child[NE], leafFunc)
+		drawTree(nodePtr.child[SE], leafFunc)
+		drawTree(nodePtr.child[SW], leafFunc)
 	}
 	return
 }
