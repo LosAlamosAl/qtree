@@ -1,0 +1,8 @@
+* Go Capabilities
+** Test
+** Benchmark
+** Package
+* Stolen stuff
+** Graphics
+   The ray-box intersection code was stolen from:
+   http://stackoverflow.com/questions/99353/how-to-test-if-a-line-segment-intersects-an-axis-aligned-rectange-in-2d
