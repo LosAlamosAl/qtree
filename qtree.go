@@ -36,8 +36,10 @@ type Geom struct {
 
 //  Could we nest Geom in here somehow?
 type Node struct {
-	geom   Geom
-	child  [children]*Node
+	geom     Geom
+	child    [children]*Node
+	isLeaf   bool              // later
+	parent  *Node              // later
 }
 
 
@@ -57,7 +59,7 @@ func main() {
 	fmt.Println("traverseTree TotalCalls: ", TotalCalls)
 	fmt.Println("traverseTree TotalLeafNodes: ", TotalLeafNodes)
 	fmt.Println("traverseTree TotalArea: ", TotalArea)
-	initWeb()
+	initWeb()  //  Start server, set path to draw tree on page load
 }
 
 
@@ -80,6 +82,7 @@ func  svgCoord(g Geom) Geom {
 }
 
 
+//  Called when web page loaded.  Draws SVG of tree to browser.
 func renderSVG(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "image/svg+xml")
 	s := svg.New(w)
@@ -95,39 +98,6 @@ func renderSVG(w http.ResponseWriter, req *http.Request) {
 	s.End()
 }
 
-//  Recursively build totally bushed-out tree.
-func buildTree(geom Geom, level int) *Node {
-	TotalCalls++
-	// fmt.Println(level, geom)
-	var tmp *Node
-	if level == 0 {
-		return tmp   // Should be nil from initialization
-	} else {
-		tmp = new(Node)
-		tmp.geom = geom
-		// Geometry for children.  W and H fixed, new X, Y for each child.
-		// 999.9 is bogus value--will change for each child creation
-		newGeom := Geom {999.9, 999.9, geom.h/2, geom.w/2}
-		// NW child
-		newGeom.x = geom.x
-		newGeom.y = geom.y + geom.h/2
-		tmp.child[NW] = buildTree(newGeom, level-1)
-		// NE child
-		newGeom.x = geom.x + geom.w/2
-		newGeom.y = geom.y + geom.h/2
-		tmp.child[NE] = buildTree(newGeom, level-1)
-		// SE child
-		newGeom.x = geom.x + geom.w/2
-		newGeom.y = geom.y
-		tmp.child[SE] = buildTree(newGeom, level-1)
-		// SW child
-		newGeom.x = geom.x
-		newGeom.y = geom.y
-		tmp.child[SW] = buildTree(newGeom, level-1)
-	}
-	return tmp
-}
-
 
 //  Recursively build segment-box intersect tree
 func segBoxTree(seg Segment, geom Geom, level int) *Node {
@@ -138,7 +108,7 @@ func segBoxTree(seg Segment, geom Geom, level int) *Node {
 	}
 	tmp := new(Node)
 	tmp.geom = geom
-	if ! segBox(seg, Box {geom.x, geom.y, geom.x+geom.w, geom.x+geom.h}) {
+	if ! segBox(seg, Box {geom.x, geom.y, geom.x+geom.w, geom.y+geom.h}) {
 		return tmp
 	}
 	// Geometry for children.  W and H fixed, new X, Y for each child.
@@ -164,11 +134,7 @@ func segBoxTree(seg Segment, geom Geom, level int) *Node {
 }
 
 
-//  Should have pluggable functions for...
-//  - what to do when at a leaf node (draw it?)
-//
-//  Think there is a logic error in leaf node check. May miss
-//  root-level nodes.  Check it out.
+//  Traverse the tree and execute leafFunc at all leaf nodes.
 func traverseTree(nodePtr *Node,  leafFunc func(g Geom)) {
 	TotalCalls++
 	if nodePtr == nil {
