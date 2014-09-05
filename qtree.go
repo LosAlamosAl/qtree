@@ -1,6 +1,6 @@
 package main
 
-import (
+crimport (
     "log"
     "github.com/ajstarks/svgo"
     "net/http"
